@@ -40,6 +40,10 @@ Data lives in `./data` (SQLite + uploaded files). Settings, all optional:
 ./deploy/deploy.sh           # every deploy after that
 ```
 
+**Normally you don't run it yourself: every push to `main` deploys automatically** (GitHub Actions, `.github/workflows/deploy.yml`). Watch it under the repo's Actions tab, or re-run it from there with "Run workflow". It logs in as a `deploy` account on the server that can update the app's code and restart it, and nothing else; its key lives only in the repo's `DEPLOY_SSH_KEY` secret. If a deploy fails (a type error, say), the live site keeps running the previous version.
+
+To work on it with someone: add them under Settings → Collaborators on GitHub. They clone, work on a branch, open a pull request, and merging it deploys. Anyone who can push to `main` can deploy, so turn on branch protection for `main` if you'd rather review each change first.
+
 On the server: the app is in `/srv/audiation/app`, data in `/srv/audiation/data`, settings in `/etc/audiation/audiation.env`, logs via `journalctl -u audiation -f`. The admin key is in the env file: `ssh root@2.29.191.107 grep ADMIN_KEY /etc/audiation/audiation.env`. Back up `/srv/audiation/data` to keep boards safe.
 
 ## How it works

@@ -10,6 +10,19 @@ KIT=/srv/audiation/kit
 id audiation >/dev/null 2>&1 || useradd --system --home-dir /srv/audiation --shell /usr/sbin/nologin audiation
 install -d -o audiation -g audiation /srv/audiation /srv/audiation/app /srv/audiation/data
 install -d -m 750 -g audiation /etc/audiation
+
+# A deploy account for GitHub Actions: it owns the app's code and may restart the app,
+# nothing else. The service still runs as `audiation`, which only reads the code.
+id deploy >/dev/null 2>&1 || useradd --create-home --shell /bin/bash --groups audiation deploy
+install -d -o deploy -g deploy -m 700 /home/deploy/.ssh
+printf 'restrict %s\n' "$(cat "$KIT/deploy_key.pub")" > /home/deploy/.ssh/authorized_keys
+chown deploy:deploy /home/deploy/.ssh/authorized_keys
+chmod 600 /home/deploy/.ssh/authorized_keys
+echo 'deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart audiation' > /etc/sudoers.d/audiation-deploy
+chmod 440 /etc/sudoers.d/audiation-deploy
+visudo -cf /etc/sudoers.d/audiation-deploy >/dev/null
+chown -R deploy:audiation /srv/audiation/app
+chmod 2755 /srv/audiation/app
 [ -f /etc/audiation/audiation.env ] || install -m 640 -g audiation "$KIT/audiation.env" /etc/audiation/audiation.env
 grep -q '^ADMIN_KEY=' /etc/audiation/audiation.env || echo "ADMIN_KEY=$(openssl rand -hex 24)" >> /etc/audiation/audiation.env
 grep -q '^WARN_FREE_GB=' /etc/audiation/audiation.env || echo "WARN_FREE_GB=13" >> /etc/audiation/audiation.env

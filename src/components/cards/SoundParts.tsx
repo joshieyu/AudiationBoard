@@ -1,6 +1,7 @@
 import { useRef, useState, type DragEvent } from 'react';
 import type { FileRef, Item, SoundTags, TagValue } from '../../../shared/types';
 import { clipTempo, engine, usePlayback } from '../../audio/engine';
+import { exportName } from '../../../shared/names';
 import { absoluteUrl, downloadUrl } from '../../lib/api';
 import { BRIGHTNESS, CHARACTERS, ENVELOPES, ROLES, SOURCES } from '../../lib/colors';
 import { camelot, keyFit, keyShort, parseKey, tempoFit, type Fit } from '../../lib/music';
@@ -81,17 +82,18 @@ function safeFileName(name: string) {
 }
 
 /** Drag straight out of the browser into a DAW or Finder (Chromium), or click to download. */
-export function DawHandle({ file }: { file: FileRef }) {
+export function DawHandle({ file, title }: { file: FileRef; title?: string }) {
+  const name = exportName(title, file.name);
   const onDragStart = (e: DragEvent) => {
     e.stopPropagation();
-    const url = absoluteUrl(downloadUrl(file));
+    const url = absoluteUrl(downloadUrl(file, name));
     e.dataTransfer.effectAllowed = 'copy';
-    e.dataTransfer.setData('DownloadURL', `${file.mime || 'application/octet-stream'}:${safeFileName(file.name)}:${url}`);
+    e.dataTransfer.setData('DownloadURL', `${file.mime || 'application/octet-stream'}:${safeFileName(name)}:${url}`);
     e.dataTransfer.setData('text/uri-list', url);
     e.dataTransfer.setData('application/x-audiation', file.fileId);
     const ghost = document.createElement('div');
     ghost.className = 'drag-ghost';
-    ghost.textContent = file.name;
+    ghost.textContent = name;
     document.body.appendChild(ghost);
     e.dataTransfer.setDragImage(ghost, 14, 14);
     setTimeout(() => ghost.remove(), 0);
@@ -99,14 +101,14 @@ export function DawHandle({ file }: { file: FileRef }) {
   return (
     <a
       className="daw-handle"
-      href={downloadUrl(file)}
-      download={file.name}
+      href={downloadUrl(file, name)}
+      download={name}
       draggable
       data-nodrag
       onDragStart={onDragStart}
       onClick={(e) => e.stopPropagation()}
       title="Drag into your DAW (Chrome/Edge) · click to download"
-      aria-label={`Download ${file.name}`}
+      aria-label={`Download ${name}`}
     >
       <Icon name="grip" size={14} strokeWidth={2.6} />
       <Icon name="download" size={14} />

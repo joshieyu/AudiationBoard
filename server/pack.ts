@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { exportName } from '../shared/names.ts';
 import { once } from 'node:events';
 import type { ServerResponse } from 'node:http';
 import { Zip, ZipPassThrough } from 'fflate';
@@ -123,7 +124,7 @@ export async function streamPack(db: Db, res: ServerResponse, title: string, sec
       if (!folder || !('file' in item.data)) continue;
       const file = db.file(item.data.file.fileId);
       if (!file || !fs.existsSync(file.path)) continue;
-      const entry = new ZipPassThrough(uniquePath(section.prefix + folder, item.data.file.name));
+      const entry = new ZipPassThrough(uniquePath(section.prefix + folder, exportName(item.type === 'audio' || item.type === 'midi' ? item.data.title : undefined, item.data.file.name)));
       zip.add(entry);
       for await (const chunk of fs.createReadStream(file.path)) {
         entry.push(new Uint8Array(chunk as Buffer), false);

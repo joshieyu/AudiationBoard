@@ -71,7 +71,7 @@ export const detachSongApi = (token: string, songViewId: string) =>
   req<AlbumPayload>(`/api/albums/${encodeURIComponent(token)}/songs/${encodeURIComponent(songViewId)}/detach`, jsonPost({}));
 /** Turn a single into the first song of a new album. */
 export const makeAlbumApi = (boardEditId: string, title: string) => req<AlbumPayload>(`/api/boards/${encodeURIComponent(boardEditId)}/album`, jsonPost({ title }));
-export const downloadUrl = (f: FileRef) => `${f.url}?dl=1`;
+export const downloadUrl = (f: FileRef, name?: string) => `${f.url}?dl=1${name && name !== f.name ? `&name=${encodeURIComponent(name)}` : ''}`;
 export const absoluteUrl = (path: string) => new URL(path, location.origin).toString();
 
 // ---- Admin ----

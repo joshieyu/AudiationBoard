@@ -73,7 +73,7 @@ export function MidiCard({ item: stored }: { item: Item<'midi'> }) {
       <div className="sc-head">
         <PlayButton item={item} />
         <div className="sc-title">
-          <InlineTitle value={d.title ?? d.file.name} editable={editable} onChange={(title) => updateItem(stored.id, { data: { title } })} />
+          <InlineTitle id={stored.id} value={d.title ?? d.file.name} editable={editable} onChange={(title) => updateItem(stored.id, { data: { title } })} />
           <div className="sc-sub">
             MIDI · {ROLES[role].label}
             {s ? ` · ${s.bars} bar${s.bars === 1 ? '' : 's'} · ${s.noteCount} notes` : ''}
@@ -84,7 +84,7 @@ export function MidiCard({ item: stored }: { item: Item<'midi'> }) {
           <span>{info.label}</span>
           <Icon name="chevronDown" size={13} />
         </button>
-        <DawHandle file={d.file} />
+        <DawHandle file={d.file} title={d.title} />
       </div>
       <SignatureRow item={item} />
       <div className="sc-wave" data-nodrag onClick={seek}>

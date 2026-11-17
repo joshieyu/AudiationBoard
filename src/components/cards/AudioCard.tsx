@@ -41,7 +41,7 @@ export function AudioCard({ item }: { item: Item<'audio'> }) {
       <div className="sc-head">
         <PlayButton item={item} />
         <div className="sc-title">
-          <InlineTitle value={d.title ?? d.file.name} editable={editable} onChange={(title) => updateItem(item.id, { data: { title } })} />
+          <InlineTitle id={item.id} value={d.title ?? d.file.name} editable={editable} onChange={(title) => updateItem(item.id, { data: { title } })} />
           <div className="sc-sub">
             {sub}
             <span className="sc-time">
@@ -50,7 +50,7 @@ export function AudioCard({ item }: { item: Item<'audio'> }) {
             </span>
           </div>
         </div>
-        <DawHandle file={d.file} />
+        <DawHandle file={d.file} title={d.title} />
       </div>
       {d.status === 'error' ? (
         <div className="sc-error">{d.error}</div>

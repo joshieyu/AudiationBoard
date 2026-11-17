@@ -1,6 +1,7 @@
 import { memo, useRef, useState, type ReactNode } from 'react';
 import type { AnyItem, NoteColor } from '../../shared/types';
 import { clipTempo, usePlayback } from '../audio/engine';
+import { exportName } from '../../shared/names';
 import { downloadUrl } from '../lib/api';
 import { keyFit, parseKey, tempoFit } from '../lib/music';
 import { sendDrag } from '../lib/sync';
@@ -79,7 +80,6 @@ export const CardFrame = memo(function CardFrame({ item, children }: { item: Any
     const moving = ids.filter((id) => st.items[id]);
     let dragging = false;
     const el = e.currentTarget as HTMLElement;
-    el.setPointerCapture(e.pointerId);
 
     const move = (ev: PointerEvent) => {
       if (pinch.active) return cancel();
@@ -87,6 +87,12 @@ export const CardFrame = memo(function CardFrame({ item, children }: { item: Any
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 4) return;
       if (!dragging) {
         dragging = true;
+        // Capture only once it's a drag, so a double-click still reaches the title.
+        try {
+          el.setPointerCapture(ev.pointerId);
+        } catch {
+          /* pointer already gone */
+        }
         setGesturing(true);
         bringToFront(moving);
       }
@@ -109,15 +115,16 @@ export const CardFrame = memo(function CardFrame({ item, children }: { item: Any
       cleanup();
       useGesture.setState({ dragIds: [], dx: 0, dy: 0 });
     };
+    // On window, since the pointer isn't captured until a drag starts.
     const cleanup = () => {
       setGesturing(false);
-      el.removeEventListener('pointermove', move);
-      el.removeEventListener('pointerup', up);
-      el.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
     };
-    el.addEventListener('pointermove', move);
-    el.addEventListener('pointerup', up);
-    el.addEventListener('pointercancel', cancel);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
   };
 
   const onResizeDown = (e: React.PointerEvent) => {
@@ -151,6 +158,8 @@ export const CardFrame = memo(function CardFrame({ item, children }: { item: Any
   };
 
   const fileRef = 'file' in item.data ? item.data.file : null;
+  const sound = item.type === 'audio' || item.type === 'midi' ? item : null;
+  const fileName = fileRef ? exportName(sound?.data.title, fileRef.name) : '';
   return (
     <div
       className={`frame ${selected ? 'selected' : ''} ${dimmed ? 'dimmed' : ''} ${playing ? 'playing' : ''} ${remote ? 'remote-moving' : ''} ${drag ? 'dragging' : ''}`}
@@ -180,8 +189,13 @@ export const CardFrame = memo(function CardFrame({ item, children }: { item: Any
               <Icon name="pencil" size={15} /> Edit text
             </button>
           )}
+          {sound && editable && (
+            <button className="menu-item" onClick={() => useBoard.setState({ editingId: item.id, selection: [item.id] })}>
+              <Icon name="pencil" size={15} /> Rename
+            </button>
+          )}
           {fileRef && (
-            <a className="menu-item" href={downloadUrl(fileRef)} download={fileRef.name}>
+            <a className="menu-item" href={downloadUrl(fileRef, fileName)} download={fileName}>
               <Icon name="download" size={15} /> Download {fileRef.name.split('.').pop()?.toUpperCase()}
             </a>
           )}

@@ -12,6 +12,7 @@ import { openDb } from './db.ts';
 import { createRooms } from './rooms.ts';
 import { albumSections, singleSections, streamPack } from './pack.ts';
 import { unfurl } from './unfurl.ts';
+import { exportName } from '../shared/names.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = path.resolve(process.env.DATA_DIR ?? path.join(ROOT, 'data'));
@@ -225,7 +226,9 @@ function serveFile(req: http.IncomingMessage, res: http.ServerResponse, id: stri
     'Access-Control-Allow-Origin': '*',
   };
   if (url.searchParams.has('dl')) {
-    headers['Content-Disposition'] = `attachment; filename="${file.name.replace(/[^\x20-\x7e]|"/g, '_')}"; filename*=UTF-8''${encodeURIComponent(file.name)}`;
+    // A renamed card downloads under its new name, keeping the file's real extension.
+    const name = exportName(url.searchParams.get('name') ?? undefined, file.name);
+    headers['Content-Disposition'] = `attachment; filename="${name.replace(/[^\x20-\x7e]|"/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`;
   }
   const range = req.headers.range?.match(/bytes=(\d*)-(\d*)/);
   if (range && (range[1] || range[2])) {

@@ -138,8 +138,11 @@ export class MidiCapture {
 
   private onKeyDown = (e: KeyboardEvent) => {
     if (!this.keysEnabled || e.metaKey || e.ctrlKey || e.altKey) return;
+    // Only fields you type into keep the keys. A focused dropdown or toggle (say, right
+    // after picking a sound) still plays, and preventDefault stops it changing the choice.
     const el = e.target as HTMLElement | null;
-    if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+    if (el && (el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+    if (el instanceof HTMLInputElement && !['checkbox', 'radio', 'button', 'range'].includes(el.type)) return;
     if (e.code === 'KeyZ' || e.code === 'KeyX') {
       e.preventDefault();
       if (!e.repeat) {

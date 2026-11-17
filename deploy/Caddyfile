@@ -1,0 +1,10 @@
+# Imported from the main /etc/caddy/Caddyfile. Caddy fetches the HTTPS certificate
+# on its own once the domain's DNS points at this server.
+audiation.space {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8787
+}
+
+www.audiation.space {
+	redir https://audiation.space{uri} permanent
+}

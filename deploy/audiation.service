@@ -1,0 +1,20 @@
+[Unit]
+Description=Audiation Space
+After=network.target
+
+[Service]
+User=audiation
+Group=audiation
+WorkingDirectory=/srv/audiation/app
+EnvironmentFile=/etc/audiation/audiation.env
+ExecStart=/opt/audiation-node/bin/node server/index.ts
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/audiation/data
+
+[Install]
+WantedBy=multi-user.target

@@ -185,6 +185,20 @@ function createSynth(ctx: AudioContext, dest: AudioNode, patch: Patch): Instrume
         active.delete(note);
         vca.disconnect();
       };
+      // Early release, for notes played live whose length isn't known up front.
+      return () => {
+        const now = ctx.currentTime;
+        if (now >= off) return;
+        vca.gain.cancelScheduledValues(now);
+        vca.gain.setTargetAtTime(0, Math.max(now, t + 0.005), r / 4 + 0.001);
+        for (const src of sources) {
+          try {
+            src.stop(now + r * 1.5 + 0.05);
+          } catch {
+            /* already stopped */
+          }
+        }
+      };
     },
     stopAll() {
       const now = ctx.currentTime;

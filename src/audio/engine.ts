@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Item, SoundTags } from '../../shared/types';
+import type { InstrumentId, Item, SoundTags } from '../../shared/types';
 import { tempoRatio } from '../lib/music';
 import { decodeAudio } from './decode';
 import { getInstrument, type Instrument } from './instruments';
@@ -115,6 +115,14 @@ class AudioEngine {
 
   async resume() {
     if (this.ctx.state !== 'running') await this.ctx.resume();
+  }
+
+  /** An instrument for playing live (MIDI recording), on the same bus as MIDI cards. */
+  liveInstrument(id: InstrumentId): Instrument {
+    const ctx = this.ctx;
+    // Sampled instruments load only the playable middle of the range at a few velocities.
+    const notes = Array.from({ length: 61 }, (_, i) => 36 + i);
+    return getInstrument(ctx, id, this.midiBus, this.midiBus, { notes, velocityRange: [36, 112] });
   }
 
   // ---- Loading ----------------------------------------------------------------------

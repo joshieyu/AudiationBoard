@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import type { AnyItem, AudioData, Item, ItemPatch, LinkData, MidiData, Op, TextData } from '../../shared/types';
+import type { AnyItem, AudioData, InstrumentId, Item, ItemPatch, LinkData, MidiData, Op, TextData } from '../../shared/types';
 import { engine } from '../audio/engine';
 import { fileKind } from '../audio/decode';
 import { hasTempoMeta, midiTags, parseMidi } from '../audio/midi';
@@ -146,7 +146,7 @@ export async function addAudioFile(file: File, pos: { x: number; y: number }, op
   }
 }
 
-export async function addMidiFile(file: File, pos: { x: number; y: number }) {
+export async function addMidiFile(file: File, pos: { x: number; y: number }, opts: { instrument?: InstrumentId } = {}) {
   const editId = useBoard.getState().editId!;
   const { w, h } = SIZES.midi;
   const tmp = nanoid(12);
@@ -154,6 +154,9 @@ export async function addMidiFile(file: File, pos: { x: number; y: number }) {
   try {
     const buf = await file.arrayBuffer();
     const parsed = parseMidi(buf);
+    // A recorded take keeps the instrument it was played with.
+    if (opts.instrument) parsed.instrument = opts.instrument;
+    if (opts.instrument === 'drums') parsed.role = 'drums';
     const ref = await uploadFile(editId, file, (p) => patchPending(tmp, { progress: p }));
     const data: MidiData = {
       file: ref,

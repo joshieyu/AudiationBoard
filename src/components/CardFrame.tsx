@@ -6,6 +6,8 @@ import { downloadUrl } from '../lib/api';
 import { keyFit, parseKey, tempoFit } from '../lib/music';
 import { sendDrag } from '../lib/sync';
 import { bringToFront, duplicateItems, removeItems, updateItem } from '../store/actions';
+import { saveTrim } from '../store/trim';
+import { engine } from '../audio/engine';
 import { commit, select, useBoard, useCamera } from '../store/board';
 import { pinch, setGesturing, useGesture } from '../store/gesture';
 import { Icon } from './ui/Icon';
@@ -194,9 +196,27 @@ export const CardFrame = memo(function CardFrame({ item, children }: { item: Any
               <Icon name="pencil" size={15} /> Rename
             </button>
           )}
+          {sound?.data.trim && editable && (
+            <>
+              <button className="menu-item" onClick={() => void saveTrim(sound)} title="Writes a new file with just the trimmed part. Undo brings the full clip back.">
+                <Icon name="check" size={15} /> Save trim
+              </button>
+              <button
+                className="menu-item"
+                onClick={() => {
+                  updateItem(item.id, { data: { trim: null } });
+                  engine.refresh({ ...sound, data: { ...sound.data, trim: null } } as typeof sound);
+                }}
+              >
+                <Icon name="undo" size={15} /> Reset trim
+              </button>
+              <div className="menu-sep" />
+            </>
+          )}
           {fileRef && (
             <a className="menu-item" href={downloadUrl(fileRef, fileName)} download={fileName}>
               <Icon name="download" size={15} /> Download {fileRef.name.split('.').pop()?.toUpperCase()}
+              {sound?.data.trim ? ' (untrimmed)' : ''}
             </a>
           )}
           {item.type === 'link' && (

@@ -4392,3 +4392,104 @@ label.midi-chip {
   width: 64px;
   font-family: var(--font-mono);
 }
+
+/* ---- Trim ---- */
+
+.trim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.trim-shade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in oklch, var(--card) 80%, transparent);
+  backdrop-filter: saturate(0.2);
+}
+
+.trim-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  margin-left: -7px;
+  cursor: ew-resize;
+  pointer-events: auto;
+  touch-action: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.trim-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 6px;
+  width: 2px;
+  border-radius: 1px;
+  background: oklch(var(--role-l) var(--role-c) var(--role-h));
+}
+
+.trim-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 3px;
+  background: oklch(var(--role-l) var(--role-c) var(--role-h));
+}
+
+.trim-handle.start::after {
+  left: 7px;
+  border-radius: 0 3px 3px 0;
+}
+
+.trim-handle.end::after {
+  left: 1px;
+  border-radius: 3px 0 0 3px;
+}
+
+.trim-handle.start {
+  margin-left: -6px;
+}
+
+.trim-handle.end {
+  margin-left: -8px;
+}
+
+.frame:hover .trim-handle,
+.frame.selected .trim-handle,
+.trim.is-trimmed .trim-handle,
+.trim.is-active .trim-handle {
+  opacity: 1;
+}
+
+.trim-label {
+  position: absolute;
+  top: 3px;
+  left: 10px;
+  font: 500 10px var(--font-mono);
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--panel-solid);
+  color: var(--text);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.trim-handle.end .trim-label {
+  left: auto;
+  right: 10px;
+}
+
+@media (pointer: coarse) {
+  .trim-handle {
+    width: 24px;
+    margin-left: -12px;
+  }
+}

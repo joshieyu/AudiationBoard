@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { create } from 'zustand';
-import type { InstrumentId, Item, SoundTags } from '../../../shared/types';
+import type { InstrumentId, Item, SoundTags, Trim } from '../../../shared/types';
 import { engine, usePlayback } from '../../audio/engine';
 import { INSTRUMENTS, instrumentInfo } from '../../audio/instruments';
 import { ROLES, roleVars } from '../../lib/colors';
@@ -12,6 +12,7 @@ import { Icon } from '../ui/Icon';
 import { Popover } from '../ui/Popover';
 import { usePlayhead } from '../usePlayhead';
 import { InlineTitle } from './InlineTitle';
+import { TrimHandles } from './TrimHandles';
 import { BpmBadge, DawHandle, KeyBadge, LayerButton, LoopButton, PlayButton, SignatureRow } from './SoundParts';
 
 /** Viewers can audition MIDI with other sounds without changing the board. */
@@ -43,6 +44,19 @@ export function MidiCard({ item: stored }: { item: Item<'midi'> }) {
   const instRef = useRef<HTMLButtonElement>(null);
   const [pick, setPick] = useState(false);
   usePlayhead(item.id, progress, head);
+
+  const setTrim = (trim: Trim | null) => {
+    updateItem(stored.id, { data: { trim } });
+    engine.refresh({ ...item, data: { ...d, trim } });
+  };
+  const beatsPerBar = s ? (s.timeSig[0] * 4) / s.timeSig[1] : 4;
+  // Bar.beat, plus the sixteenth when it isn't on the beat.
+  const beatLabel = (v: number) => {
+    const bar = Math.floor(v / beatsPerBar + 1e-6);
+    const beat = v - bar * beatsPerBar;
+    const sixteenth = Math.round((beat % 1) * 4);
+    return `${bar + 1}.${Math.floor(beat + 1e-6) + 1}${sixteenth ? `.${sixteenth + 1}` : ''}`;
+  };
 
   const choose = (id: InstrumentId) => {
     setPick(false);
@@ -89,6 +103,9 @@ export function MidiCard({ item: stored }: { item: Item<'midi'> }) {
       <SignatureRow item={item} />
       <div className="sc-wave" data-nodrag onClick={seek}>
         {s && <PianoRoll summary={s} role={role} progressRef={progress} />}
+        {s && (
+          <TrimHandles total={s.beats} trim={d.trim} editable={editable} minLength={0.25} snap={(v) => Math.round(v * 4) / 4} label={beatLabel} onChange={setTrim} />
+        )}
         <div className="playhead" ref={head} />
       </div>
       {s && s.chords.length > 0 && (

@@ -114,9 +114,19 @@ export interface LinkData {
   meta?: LinkMeta;
 }
 
+/**
+ * A non-destructive trim: playback covers only start..end. Seconds for audio,
+ * beats for MIDI. The file itself is untouched until the trim is saved.
+ */
+export interface Trim {
+  start: number;
+  end: number;
+}
+
 export interface AudioData {
   file: FileRef;
   title?: string;
+  trim?: Trim | null;
   duration: number;
   sampleRate: number;
   channels: number;
@@ -177,6 +187,7 @@ export interface MidiSummary {
 export interface MidiData {
   file: FileRef;
   title?: string;
+  trim?: Trim | null;
   summary?: MidiSummary;
   instrument: InstrumentId;
   tags?: SoundTags;

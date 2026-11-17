@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import type { Item } from '../../../shared/types';
+import type { Item, Trim } from '../../../shared/types';
 import { engine, usePlayback } from '../../audio/engine';
 import { ROLES, roleVars } from '../../lib/colors';
 import { updateItem } from '../../store/actions';
@@ -8,6 +8,7 @@ import { Waveform } from '../Waveform';
 import { fmtTime, usePlayhead } from '../usePlayhead';
 import { BpmBadge, DawHandle, KeyBadge, LayerButton, LoopButton, PlayButton, SignatureRow } from './SoundParts';
 import { InlineTitle } from './InlineTitle';
+import { TrimHandles } from './TrimHandles';
 
 const KIND_LABEL = { oneshot: 'One-shot', loop: 'Loop', phrase: 'Phrase', song: 'Song' } as const;
 
@@ -21,6 +22,11 @@ export function AudioCard({ item }: { item: Item<'audio'> }) {
   const time = useRef<HTMLSpanElement>(null);
   const [hover, setHover] = useState<number | null>(null);
   usePlayhead(item.id, progress, head, time);
+
+  const setTrim = (trim: Trim | null) => {
+    updateItem(item.id, { data: { trim } });
+    engine.refresh({ ...item, data: { ...d, trim } });
+  };
 
   const seek = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
@@ -68,6 +74,7 @@ export function AudioCard({ item }: { item: Item<'audio'> }) {
             onPointerLeave={() => setHover(null)}
           >
             <Waveform peaks={d.peaks} style={{ role, source: tags?.source.v ?? 'hybrid', character: tags?.character.v ?? 'clean' }} progressRef={progress} />
+            <TrimHandles total={d.duration} trim={d.trim} editable={editable} minLength={0.05} label={(v) => `${v.toFixed(2)}s`} onChange={setTrim} />
             <div className="playhead" ref={head} />
             {hover !== null && (
               <div className="hover-line" style={{ left: `${hover * 100}%` }}>

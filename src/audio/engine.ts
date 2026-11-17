@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { InstrumentId, Item, SoundTags } from '../../shared/types';
+import type { InstrumentId, Item, SoundTags, Trim } from '../../shared/types';
 import { tempoRatio } from '../lib/music';
 import { decodeAudio } from './decode';
 import { getInstrument, type Instrument } from './instruments';
@@ -54,7 +54,11 @@ interface Voice {
   speed: number;
   loop: boolean;
   loopLen: number;
+  /** Length of what plays: the trimmed region, or the whole clip. */
   duration: number;
+  /** Where that region starts in the clip, and the clip's full length (seconds). */
+  offset: number;
+  total: number;
   layered: boolean;
   gain: GainNode;
   stop(): void;
@@ -65,6 +69,21 @@ const MAX_CACHE_BYTES = 450 * 1024 * 1024;
 const LOOKAHEAD = 0.15;
 
 /** Usable tempo for syncing: confident enough, and not a one-shot. */
+/** The part of a clip that plays, clamped to the clip and at least `min` long. */
+export function trimRegion(trim: Trim | null | undefined, total: number, min: number) {
+  if (!trim) return { start: 0, end: total, trimmed: false };
+  const start = Math.max(0, Math.min(trim.start, total - min));
+  const end = Math.max(start + min, Math.min(trim.end, total));
+  return { start, end, trimmed: start > 1e-4 || end < total - 1e-4 };
+}
+
+/** A clip position (seek, resume) as a position inside the region, if one was given. */
+function regionFrom(from: number | undefined, start: number, length: number) {
+  if (from === undefined) return undefined;
+  const rel = from - start;
+  return rel >= 0 && rel < length ? rel : 0;
+}
+
 export function clipTempo(tags: SoundTags | undefined): number | null {
   if (!tags?.bpm.v || tags.kind.v === 'oneshot') return null;
   if (tags.bpm.src === 'auto' && tags.bpm.conf < 0.4) return null;
@@ -217,7 +236,8 @@ class AudioEngine {
     if (!v || !this._ctx) return null;
     let pos = v.pos0 + Math.max(0, this.ctx.currentTime - v.t0) * v.speed;
     if (v.loop && v.loopLen > 0) pos %= v.loopLen;
-    return { pos: Math.min(pos, v.duration), duration: v.duration, loopLen: v.loopLen };
+    // Positions outside the engine are clip positions, so a trimmed clip's playhead sits in its region.
+    return { pos: v.offset + Math.min(pos, v.duration), duration: v.total, loopLen: v.loopLen };
   }
 
   private tempoFactor(item: Playable): number {
@@ -273,12 +293,15 @@ class AudioEngine {
     const buf = await this.getBuffer(url);
     const r = this.tempoFactor(item);
     const { stretch } = usePlayback.getState();
-    const duration = buf.duration;
+    const total = buf.duration;
+    const region = trimRegion(item.data.trim, total, 0.02);
+    const duration = region.end - region.start;
     const tags = item.data.tags;
     const bars = item.data.analysis?.bars;
     const bpm = clipTempo(tags);
     let loopLen = duration;
-    if (bars && bpm) {
+    // Untrimmed loops snap to their exact bar length; a trim is taken as set.
+    if (!region.trimmed && bars && bpm) {
       const exact = (bars * 240) / bpm;
       if (Math.abs(exact - duration) / duration < 0.03) loopLen = Math.min(exact, duration);
     }
@@ -290,20 +313,23 @@ class AudioEngine {
     const ctx = this.ctx;
     const speed = 1 / r;
     const when = ctx.currentTime + 0.03;
-    const pos = this.startPos(when, speed, loop ? loopLen : 0, duration, layer, opts.from);
+    const pos = this.startPos(when, speed, loop ? loopLen : 0, duration, layer, regionFrom(opts.from, region.start, duration));
     // Buffer-time scale: stretched buffers are r× longer; varispeed uses playbackRate.
     const bScale = warp ? r : 1;
     const src = ctx.createBufferSource();
     src.buffer = playBuf;
     if (!warp && r !== 1) src.playbackRate.value = speed;
     src.loop = loop;
-    src.loopStart = 0;
-    src.loopEnd = Math.min(playBuf.duration, loopLen * bScale);
+    src.loopStart = region.start * bScale;
+    src.loopEnd = Math.min(playBuf.duration, (region.start + loopLen) * bScale);
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0, when);
     gain.gain.linearRampToValueAtTime(1, when + 0.006);
     src.connect(gain).connect(this.master);
-    src.start(when, Math.min(pos * bScale, playBuf.duration - 0.001));
+    const startAt = Math.min((region.start + pos) * bScale, playBuf.duration - 0.001);
+    // Without looping, stop at the trim's end.
+    if (loop) src.start(when, startAt);
+    else src.start(when, startAt, Math.max(0.001, (duration - pos) * bScale));
 
     const voice: Voice = {
       id: item.id,
@@ -314,6 +340,8 @@ class AudioEngine {
       loop,
       loopLen,
       duration,
+      offset: region.start,
+      total,
       layered: layer,
       gain,
       stop: () => {
@@ -345,7 +373,15 @@ class AudioEngine {
   private async startMidi(item: Item<'midi'>, layer: boolean, opts: { from?: number; loop?: boolean }, gen: number): Promise<Voice | null> {
     const summary = item.data.summary;
     if (!summary) return null;
-    const notes = await this.getMidiNotes(item);
+    const allNotes = await this.getMidiNotes(item);
+    // A trim keeps the notes that start inside it, shifted to its start and cut at its end.
+    const beats = trimRegion(item.data.trim, summary.beats, 0.25);
+    const regionBeats = beats.end - beats.start;
+    const notes = beats.trimmed
+      ? allNotes
+          .filter((n) => n.s >= beats.start - 1e-6 && n.s < beats.end - 1e-6)
+          .map((n) => ({ ...n, s: n.s - beats.start, l: Math.min(n.l, beats.end - n.s) }))
+      : allNotes;
     const ctx = this.ctx;
     const gain = ctx.createGain();
     gain.connect(this.midiBus);
@@ -363,12 +399,12 @@ class AudioEngine {
     }
     const r = this.tempoFactor(item);
     const fileSpb = 60 / summary.bpm;
-    const duration = summary.beats * fileSpb;
+    const duration = regionBeats * fileSpb;
     const loopLen = duration;
     const speed = 1 / r;
     const loop = opts.loop ?? (layer ? true : item.data.loop ?? true);
     const when = ctx.currentTime + 0.05;
-    const pos = this.startPos(when, speed, loop ? loopLen : 0, duration, layer, opts.from);
+    const pos = this.startPos(when, speed, loop ? loopLen : 0, duration, layer, regionFrom(opts.from, beats.start * fileSpb, duration));
 
     // Lookahead scheduler over native-beat note times.
     const spbReal = fileSpb * r;
@@ -385,7 +421,7 @@ class AudioEngine {
           if (!loop) {
             if (!ended) {
               ended = true;
-              const endAt = when + (summary.beats - startBeat) * spbReal;
+              const endAt = when + (regionBeats - startBeat) * spbReal;
               setTimeout(() => finish(), Math.max(0, (endAt - ctx.currentTime) * 1000) + 200);
             }
             return;
@@ -394,7 +430,7 @@ class AudioEngine {
           cycle++;
         }
         const n = notes[idx];
-        const t = when + (cycle * summary.beats + n.s - startBeat) * spbReal;
+        const t = when + (cycle * regionBeats + n.s - startBeat) * spbReal;
         if (t > until) return;
         if (t >= ctx.currentTime - 0.01) {
           const stop = inst.noteOn(n.drum ? n.n : n.n, Math.max(t, ctx.currentTime), Math.max(0.03, n.l * spbReal), n.v);
@@ -424,6 +460,8 @@ class AudioEngine {
       loop,
       loopLen,
       duration,
+      offset: beats.start * fileSpb,
+      total: summary.beats * fileSpb,
       layered: layer,
       gain,
       stop: () => {
@@ -479,7 +517,7 @@ class AudioEngine {
       v.loop = loop;
       v.setLoop(loop);
       if (p) {
-        v.pos0 = p.pos;
+        v.pos0 = p.pos - v.offset;
         v.t0 = this.ctx.currentTime;
       }
       this.syncState();

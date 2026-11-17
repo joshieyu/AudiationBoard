@@ -45,6 +45,7 @@ export function TextCard({ item }: { item: Item<'text'> }) {
         <textarea
           ref={ta}
           className="md-editor"
+          data-scroll
           defaultValue={item.data.md}
           placeholder={PLACEHOLDER}
           onBlur={finish}

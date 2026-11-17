@@ -141,6 +141,8 @@ export function Canvas() {
       const t = e.target as HTMLElement;
       const scroller = t.closest('[data-scroll]') as HTMLElement | null;
       if (!e.ctrlKey && !e.metaKey && scroller && scroller.scrollHeight > scroller.clientHeight) {
+        // While typing in a note, the wheel belongs to the note even at its ends.
+        if (scroller instanceof HTMLTextAreaElement) return;
         const atTop = scroller.scrollTop <= 0 && e.deltaY < 0;
         const atEnd = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1 && e.deltaY > 0;
         if (!atTop && !atEnd) return;

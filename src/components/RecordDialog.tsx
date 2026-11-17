@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { InstrumentId } from '../../shared/types';
 import { INSTRUMENTS, instrumentInfo } from '../audio/instruments';
 import { MidiCapture, takeToMidi } from '../audio/midiCapture';
-import { startRecording, type Recording } from '../audio/recorder';
+import { startRecording, type ChannelMode, type Recording } from '../audio/recorder';
 import { roleCss } from '../lib/colors';
 import { addAudioFile, addMidiFile, freeSpot, SIZES } from '../store/actions';
 import { useBoard } from '../store/board';
@@ -74,6 +74,7 @@ function VoiceRecorder({ onBusy, done }: { onBusy: (b: boolean) => void; done: (
   const boardBpm = useBoard((s) => s.board?.bpm ?? null);
   const [rec, setRec] = useState<Recording | null>(null);
   const [click, setClick] = useState(false);
+  const [channels, setChannels] = useState<ChannelMode>(() => (store.get('audiation-rec-channels') as ChannelMode | null) ?? 'auto');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -138,7 +139,8 @@ function VoiceRecorder({ onBusy, done }: { onBusy: (b: boolean) => void; done: (
     if (!rec) return;
     setSaving(true);
     try {
-      const { file, seconds } = await rec.stop();
+      store.set('audiation-rec-channels', channels);
+      const { file, seconds } = await rec.stop(channels);
       live.current = null;
       setRec(null);
       onBusy(false);
@@ -169,6 +171,15 @@ function VoiceRecorder({ onBusy, done }: { onBusy: (b: boolean) => void; done: (
           </span>
           <span className="rec-state">{rec ? 'Recording — press stop to add it' : 'Ready'}</span>
         </div>
+        <label className="midi-field" title="Audio interfaces send input 1 on the left and input 2 on the right">
+          <span>Input</span>
+          <select value={channels} onChange={(e) => setChannels(e.target.value as ChannelMode)}>
+            <option value="auto">Auto</option>
+            <option value="left">Input 1 (mono)</option>
+            <option value="right">Input 2 (mono)</option>
+            <option value="stereo">Stereo (1 + 2)</option>
+          </select>
+        </label>
         {boardBpm && (
           <label className="toggle" title="A click at the board tempo — wear headphones so it isn't recorded">
             <input type="checkbox" checked={click} disabled={!!rec} onChange={(e) => setClick(e.target.checked)} />
@@ -178,7 +189,10 @@ function VoiceRecorder({ onBusy, done }: { onBusy: (b: boolean) => void; done: (
         )}
       </div>
       {error && <p className="form-error">{error}</p>}
-      <p className="fine">Recorded as uncompressed 24-bit WAV with no noise suppression, so it drops straight into a session.</p>
+      <p className="fine">
+        Recorded as uncompressed 24-bit WAV with no noise suppression, so it drops straight into a session.{' '}
+        {channels === 'auto' ? 'Auto saves a single mic as centered mono, and keeps stereo only when both inputs have their own signal.' : ''}
+      </p>
     </div>
   );
 }

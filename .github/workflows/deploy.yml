@@ -35,4 +35,5 @@ jobs:
         env:
           AUDIATION_SERVER: deploy@2.29.191.107
       - name: Check the live site
-        run: curl -fsS -o /dev/null -w "audiation.space: HTTP %{http_code}\n" https://audiation.space/
+        run: |
+          curl -fsS -o /dev/null -w "audiation.space: HTTP %{http_code}\n" https://audiation.space/

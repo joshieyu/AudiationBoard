@@ -2020,6 +2020,10 @@ h1.board-title {
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.6;
+  /* JetBrains Mono joins runs like !! into one glyph drawn on the last character;
+     some browsers don't redraw that while typing, leaving the first ones blank. */
+  font-variant-ligatures: none;
+  font-feature-settings: 'liga' 0, 'calt' 0;
 }
 
 .md-editor::placeholder {

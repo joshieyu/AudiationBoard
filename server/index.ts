@@ -1,4 +1,5 @@
 import http from 'node:http';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -24,6 +25,10 @@ const HOST = process.env.HOST;
 const MAX_UPLOAD = Number(process.env.MAX_UPLOAD_MB ?? 250) * 1024 * 1024;
 // Uploads are refused once the data disk gets this low, so a shared server never fills up.
 const MIN_FREE = Number(process.env.MIN_FREE_GB ?? 0) * 1024 ** 3;
+// The admin page warns once free space drops below this.
+const WARN_FREE = Number(process.env.WARN_FREE_GB ?? Number(process.env.MIN_FREE_GB ?? 0) + 5) * 1024 ** 3;
+// Unlocks /admin. Without it the admin API doesn't exist.
+const ADMIN_KEY = process.env.ADMIN_KEY ?? '';
 
 fs.mkdirSync(FILES_DIR, { recursive: true });
 
@@ -98,6 +103,27 @@ function requireBoard(token: string, edit: boolean) {
   if (!resolved) throw new HttpError(404, 'Board not found');
   if (edit && !resolved.canEdit) throw new HttpError(403, 'This link is view-only');
   return resolved;
+}
+
+function requireAdmin(req: http.IncomingMessage) {
+  if (!ADMIN_KEY) throw new HttpError(404, 'Not found');
+  const given = Buffer.from(String(req.headers['x-admin-key'] ?? ''));
+  const want = Buffer.from(ADMIN_KEY);
+  if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) throw new HttpError(401, 'Wrong admin key');
+}
+
+function storageStatus() {
+  const disk = fs.statfsSync(DATA_DIR);
+  const total = disk.blocks * disk.bsize;
+  const free = disk.bavail * disk.bsize;
+  const dbBytes = ['audiation.db', 'audiation.db-wal'].reduce((n, f) => {
+    try {
+      return n + fs.statSync(path.join(DATA_DIR, f)).size;
+    } catch {
+      return n;
+    }
+  }, 0);
+  return { disk: { total, free }, dbBytes, minFree: MIN_FREE, warnFree: WARN_FREE, low: free < WARN_FREE };
 }
 
 function requireAlbum(token: string, edit: boolean) {
@@ -352,6 +378,43 @@ const server = http.createServer(async (req, res) => {
     if ((m = p.match(/^\/api\/albums\/([\w-]+)\/pack\.zip$/)) && method === 'GET') {
       const { album } = requireAlbum(m[1], false);
       return await streamPack(db, res, album.meta.title, albumSections(db.albumBoards(album.id)));
+    }
+
+    // ---- Admin ----
+
+    if (p === '/api/admin/status' && method === 'GET') {
+      requireAdmin(req);
+      return json(res, 200, storageStatus());
+    }
+
+    if (p === '/api/admin/storage' && method === 'GET') {
+      requireAdmin(req);
+      return json(res, 200, { ...storageStatus(), ...db.storageReport() });
+    }
+
+    if (p === '/api/admin/delete' && method === 'POST') {
+      requireAdmin(req);
+      const body = await readJson<{ boards?: string[]; albums?: string[] }>(req);
+      const freed = { files: 0, bytes: 0 };
+      const add = (f: { files: number; bytes: number }) => {
+        freed.files += f.files;
+        freed.bytes += f.bytes;
+      };
+      for (const id of body.albums ?? []) {
+        if (db.album(id)) add(db.deleteAlbum(id));
+      }
+      const touched = new Set<string>();
+      const boards = (body.boards ?? []).map((id) => db.board(id)).filter((b): b is BoardRow => !!b);
+      if (boards.some((b) => b.kind === 'overview')) throw new HttpError(400, 'Delete the whole album to remove its album page');
+      for (const b of boards) if (b.albumId) touched.add(b.albumId);
+      add(db.deleteBoards(boards.map((b) => b.id)));
+      for (const albumId of touched) notifyAlbum(albumId);
+      return json(res, 200, { freed, ...storageStatus() });
+    }
+
+    if (p === '/api/admin/prune-unused' && method === 'POST') {
+      requireAdmin(req);
+      return json(res, 200, { freed: db.pruneUnused(), ...storageStatus() });
     }
 
     if (p === '/api/unfurl' && method === 'GET') {

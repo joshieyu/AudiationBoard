@@ -302,3 +302,46 @@ export type ServerMsg =
   | { t: 'drag'; id: string; moves: { id: string; x: number; y: number }[] }
   /** The album this board belongs to changed (songs added, renamed, reordered). */
   | { t: 'album' };
+
+// ---- Admin ----
+
+export interface StorageBoard {
+  id: string;
+  editId: string;
+  title: string;
+  kind: BoardKind;
+  albumId: string | null;
+  position: number;
+  createdAt: number;
+  updatedAt: number;
+  items: number;
+  files: number;
+  bytes: number;
+}
+
+export interface StorageAlbum {
+  id: string;
+  editId: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface StorageReport {
+  boards: StorageBoard[];
+  albums: StorageAlbum[];
+  fileBytes: number;
+  unused: { files: number; bytes: number };
+}
+
+export interface AdminStatus {
+  disk: { total: number; free: number };
+  dbBytes: number;
+  /** Uploads are refused below this much free space (0 = never). */
+  minFree: number;
+  /** The admin page warns below this. */
+  warnFree: number;
+  low: boolean;
+}
+
+export type AdminStorage = AdminStatus & StorageReport;

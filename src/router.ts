@@ -12,10 +12,12 @@ window.addEventListener('popstate', () => useRoute.setState({ path: location.pat
 
 export type Route =
   | { name: 'home' }
+  | { name: 'admin' }
   | { name: 'board'; token: string; mode: 'edit' | 'view' }
   | { name: 'album'; token: string; song: string | null };
 
 export function parseRoute(path: string): Route {
+  if (/^\/admin\/?$/.test(path)) return { name: 'admin' };
   const m = path.match(/^\/(b|e)\/([\w-]+)\/?$/);
   if (m) return { name: 'board', token: m[2], mode: m[1] === 'e' ? 'edit' : 'view' };
   const a = path.match(/^\/a\/([\w-]+)(?:\/([\w-]+))?\/?$/);

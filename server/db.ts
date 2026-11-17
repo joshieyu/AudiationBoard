@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AlbumMeta, AnyItem, BoardKind, BoardMeta, BoardPatch, ItemPatch, Op } from '../shared/types.ts';
+import type { AlbumMeta, AnyItem, BoardKind, BoardMeta, BoardPatch, ItemPatch, Op, StorageBoard, StorageReport } from '../shared/types.ts';
 
 export interface BoardRow {
   id: string;
@@ -28,6 +28,14 @@ export interface FileRow {
 }
 
 const MAX_ITEM_JSON = 768 * 1024;
+// A file no card points at is kept this long first: uploads land before their card does,
+// and a deleted card's file is what makes undo work.
+const UNUSED_GRACE_MS = 24 * 3600 * 1000;
+const FILE_REF = /"fileId":"([\w-]+)"/g;
+
+function fileRefs(json: string): string[] {
+  return Array.from(json.matchAll(FILE_REF), (m) => m[1]);
+}
 const ITEM_TYPES = new Set(['text', 'image', 'link', 'audio', 'midi']);
 
 export function openDb(dataDir: string) {
@@ -98,7 +106,52 @@ export function openDb(dataDir: string) {
     deleteItem: db.prepare('DELETE FROM items WHERE id = ? AND board_id = ?'),
     insertFile: db.prepare('INSERT INTO files (id, board_id, name, mime, size, path, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'),
     fileById: db.prepare('SELECT id, board_id, name, mime, size, path FROM files WHERE id = ?'),
+    allBoards: db.prepare('SELECT id, edit_id, meta, album_id, kind, position, created_at, updated_at FROM boards'),
+    allAlbums: db.prepare('SELECT id, edit_id, meta, created_at, updated_at FROM albums'),
+    allItems: db.prepare('SELECT board_id, json FROM items'),
+    allFiles: db.prepare('SELECT id, board_id, size, path, created_at FROM files'),
+    deleteBoardItems: db.prepare('DELETE FROM items WHERE board_id = ?'),
+    deleteBoard: db.prepare('DELETE FROM boards WHERE id = ?'),
+    deleteAlbum: db.prepare('DELETE FROM albums WHERE id = ?'),
+    deleteFile: db.prepare('DELETE FROM files WHERE id = ?'),
   };
+
+  type FileInfo = { id: string; boardId: string; size: number; path: string; createdAt: number };
+
+  function fileIndex() {
+    const files = new Map<string, FileInfo>();
+    for (const r of q.allFiles.all() as Record<string, unknown>[]) {
+      files.set(r.id as string, { id: r.id as string, boardId: r.board_id as string, size: r.size as number, path: r.path as string, createdAt: r.created_at as number });
+    }
+    return files;
+  }
+
+  /** File ids each board's cards point at. A pasted card can point at another board's upload. */
+  function refsByBoard() {
+    const refs = new Map<string, Set<string>>();
+    for (const r of q.allItems.all() as { board_id: string; json: string }[]) {
+      let set = refs.get(r.board_id);
+      if (!set) refs.set(r.board_id, (set = new Set()));
+      for (const id of fileRefs(r.json)) set.add(id);
+    }
+    return refs;
+  }
+
+  /** Deletes the given files from disk and the database if no card anywhere points at them. */
+  function dropUnreferenced(candidates: Iterable<FileInfo>, refs: Map<string, Set<string>>) {
+    const used = new Set<string>();
+    for (const set of refs.values()) for (const id of set) used.add(id);
+    let files = 0;
+    let bytes = 0;
+    for (const f of candidates) {
+      if (used.has(f.id)) continue;
+      q.deleteFile.run(f.id);
+      fs.rmSync(f.path, { force: true });
+      files++;
+      bytes += f.size;
+    }
+    return { files, bytes };
+  }
 
   function toBoard(row: Record<string, unknown> | undefined): BoardRow | null {
     if (!row) return null;
@@ -234,6 +287,102 @@ export function openDb(dataDir: string) {
 
     insertFile(f: FileRow) {
       q.insertFile.run(f.id, f.boardId, f.name, f.mime, f.size, f.path, Date.now());
+    },
+
+    // ---- Admin ----
+
+    storageReport(): StorageReport {
+      const files = fileIndex();
+      const refs = refsByBoard();
+      const itemCounts = new Map<string, number>();
+      for (const r of q.allItems.all() as { board_id: string }[]) itemCounts.set(r.board_id, (itemCounts.get(r.board_id) ?? 0) + 1);
+
+      const boards = (q.allBoards.all() as Record<string, unknown>[]).map((r): StorageBoard => {
+        const row = toBoard(r)!;
+        // A board's footprint: what its cards point at, plus its own uploads no card uses yet.
+        const ids = new Set(refs.get(row.id));
+        for (const f of files.values()) if (f.boardId === row.id) ids.add(f.id);
+        let bytes = 0;
+        let count = 0;
+        for (const id of ids) {
+          const f = files.get(id);
+          if (!f) continue;
+          bytes += f.size;
+          count++;
+        }
+        return {
+          id: row.id,
+          editId: row.editId,
+          title: row.meta.title,
+          kind: row.kind,
+          albumId: row.albumId,
+          position: row.position,
+          createdAt: r.created_at as number,
+          updatedAt: r.updated_at as number,
+          items: itemCounts.get(row.id) ?? 0,
+          files: count,
+          bytes,
+        };
+      });
+
+      const referenced = new Set<string>();
+      for (const set of refs.values()) for (const id of set) referenced.add(id);
+      const cutoff = Date.now() - UNUSED_GRACE_MS;
+      const unused = { files: 0, bytes: 0 };
+      let fileBytes = 0;
+      for (const f of files.values()) {
+        fileBytes += f.size;
+        if (!referenced.has(f.id) && f.createdAt < cutoff) {
+          unused.files++;
+          unused.bytes += f.size;
+        }
+      }
+
+      const albums = (q.allAlbums.all() as Record<string, unknown>[]).map((r) => {
+        const a = toAlbum(r)!;
+        return { id: a.id, editId: a.editId, title: a.meta.title, createdAt: r.created_at as number, updatedAt: r.updated_at as number };
+      });
+      return { boards, albums, fileBytes, unused };
+    },
+
+    /** Permanently deletes boards and any of their files no other board uses. */
+    deleteBoards(ids: string[]) {
+      const files = fileIndex();
+      const before = refsByBoard();
+      const candidates = new Map<string, FileInfo>();
+      for (const id of ids) {
+        for (const fid of before.get(id) ?? []) {
+          const f = files.get(fid);
+          if (f) candidates.set(fid, f);
+        }
+        for (const f of files.values()) if (f.boardId === id) candidates.set(f.id, f);
+      }
+      db.exec('BEGIN');
+      try {
+        for (const id of ids) {
+          q.deleteBoardItems.run(id);
+          q.deleteBoard.run(id);
+        }
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+      return dropUnreferenced(candidates.values(), refsByBoard());
+    },
+
+    /** Deletes an album with its album page and every song. */
+    deleteAlbum(albumId: string) {
+      const freed = this.deleteBoards(this.albumBoards(albumId).map((b) => b.id));
+      q.deleteAlbum.run(albumId);
+      return freed;
+    },
+
+    /** Deletes files no card has pointed at for a day. */
+    pruneUnused() {
+      const cutoff = Date.now() - UNUSED_GRACE_MS;
+      const old = [...fileIndex().values()].filter((f) => f.createdAt < cutoff);
+      return dropUnreferenced(old, refsByBoard());
     },
 
     file(id: string): FileRow | null {

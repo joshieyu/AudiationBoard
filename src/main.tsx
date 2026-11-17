@@ -9,6 +9,7 @@ import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/500.css';
 import './lib/theme';
 import './styles/app.css';
+import { AdminPage } from './components/AdminPage';
 import { AlbumPage } from './components/AlbumPage';
 import { BoardPage } from './components/BoardPage';
 import { Landing } from './components/Landing';
@@ -24,6 +25,8 @@ function App() {
         <BoardPage key={route.token} token={route.token} />
       ) : route.name === 'album' ? (
         <AlbumPage key={route.token} token={route.token} song={route.song} />
+      ) : route.name === 'admin' ? (
+        <AdminPage />
       ) : (
         <Landing />
       )}

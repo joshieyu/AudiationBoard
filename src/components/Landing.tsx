@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Character, Role, Source } from '../../shared/types';
-import { createAlbum, createBoard } from '../lib/api';
+import type { AdminStatus } from '../../shared/types';
+import { adminKey, adminStatus, createAlbum, createBoard, formatBytes } from '../lib/api';
 import { ROLES, roleCss } from '../lib/colors';
 import { forgetBoard, recentBoards, recentHref, rememberBoard, type RecentBoard } from '../lib/identity';
 import { toggleTheme, useTheme } from '../lib/theme';
@@ -95,9 +96,14 @@ export function Landing() {
   const [busy, setBusy] = useState<'single' | 'album' | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const theme = useTheme((s) => s.theme);
+  const [storage, setStorage] = useState<AdminStatus | null>(null);
+  const isAdmin = !!adminKey();
 
   useEffect(() => {
     document.title = 'Audiation Space — a vision board that listens';
+    // Only the admin's browser holds the key, so only the admin sees storage warnings.
+    const key = adminKey();
+    if (key) adminStatus(key).then(setStorage, () => {});
   }, []);
 
   const create = async (kind: 'single' | 'album') => {
@@ -135,6 +141,19 @@ export function Landing() {
           <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={17} />
         </button>
       </header>
+
+      {storage?.low && (
+        <a className="storage-banner" href="/admin" onClick={(e) => { e.preventDefault(); navigate('/admin'); }}>
+          <Icon name="info" size={16} />
+          <span>
+            <b>Storage is running low.</b> {formatBytes(storage.disk.free)} free on the server
+            {storage.minFree > 0 ? `; uploads stop at ${formatBytes(storage.minFree)}` : ''}.
+          </span>
+          <span className="sb-cta">
+            Review projects <Icon name="chevronRight" size={14} />
+          </span>
+        </a>
+      )}
 
       <main className="hero">
         <div className="hero-copy">
@@ -215,7 +234,14 @@ export function Landing() {
           </ul>
         </section>
       )}
-      <footer className="landing-foot">Boards live on this server. Anyone with a board's link can open it — share edit links with care.</footer>
+      <footer className="landing-foot">
+        Boards live on this server. Anyone with a board's link can open it — share edit links with care.
+        {isAdmin && (
+          <a href="/admin" onClick={(e) => { e.preventDefault(); navigate('/admin'); }}>
+            Admin
+          </a>
+        )}
+      </footer>
     </div>
   );
 }

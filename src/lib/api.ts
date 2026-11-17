@@ -1,4 +1,4 @@
-import type { AlbumBoardRef, AlbumPayload, BoardMeta, BoardPayload, FileRef, LinkMeta, Op } from '../../shared/types';
+import type { AdminStatus, AdminStorage, AlbumBoardRef, AlbumPayload, BoardMeta, BoardPayload, FileRef, LinkMeta, Op } from '../../shared/types';
 
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
@@ -73,3 +73,50 @@ export const detachSongApi = (token: string, songViewId: string) =>
 export const makeAlbumApi = (boardEditId: string, title: string) => req<AlbumPayload>(`/api/boards/${encodeURIComponent(boardEditId)}/album`, jsonPost({ title }));
 export const downloadUrl = (f: FileRef) => `${f.url}?dl=1`;
 export const absoluteUrl = (path: string) => new URL(path, location.origin).toString();
+
+// ---- Admin ----
+
+const ADMIN_KEY_STORE = 'audiation-admin-key';
+
+export function adminKey(): string | null {
+  try {
+    return localStorage.getItem(ADMIN_KEY_STORE);
+  } catch {
+    return null;
+  }
+}
+
+export function setAdminKey(key: string | null) {
+  try {
+    if (key) localStorage.setItem(ADMIN_KEY_STORE, key);
+    else localStorage.removeItem(ADMIN_KEY_STORE);
+  } catch {
+    /* storage blocked; the key lasts for this page only */
+  }
+}
+
+function adminReq<T>(url: string, key: string, body?: unknown) {
+  return req<T>(url, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: { 'x-admin-key': key, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+type Freed = { freed: { files: number; bytes: number } } & AdminStatus;
+export const adminStatus = (key: string) => adminReq<AdminStatus>('/api/admin/status', key);
+export const adminStorage = (key: string) => adminReq<AdminStorage>('/api/admin/storage', key);
+export const adminDelete = (key: string, target: { boards?: string[]; albums?: string[] }) => adminReq<Freed>('/api/admin/delete', key, target);
+export const adminPruneUnused = (key: string) => adminReq<Freed>('/api/admin/prune-unused', key, {});
+
+export function formatBytes(n: number) {
+  if (n < 1024) return `${n} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v >= 100 ? v.toFixed(0) : v.toFixed(1)} ${units[i]}`;
+}

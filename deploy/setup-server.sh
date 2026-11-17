@@ -11,6 +11,8 @@ id audiation >/dev/null 2>&1 || useradd --system --home-dir /srv/audiation --she
 install -d -o audiation -g audiation /srv/audiation /srv/audiation/app /srv/audiation/data
 install -d -m 750 -g audiation /etc/audiation
 [ -f /etc/audiation/audiation.env ] || install -m 640 -g audiation "$KIT/audiation.env" /etc/audiation/audiation.env
+grep -q '^ADMIN_KEY=' /etc/audiation/audiation.env || echo "ADMIN_KEY=$(openssl rand -hex 24)" >> /etc/audiation/audiation.env
+grep -q '^WARN_FREE_GB=' /etc/audiation/audiation.env || echo "WARN_FREE_GB=13" >> /etc/audiation/audiation.env
 
 # A private Node runtime for this app only, verified against nodejs.org's checksums.
 dpkg -s libatomic1 >/dev/null 2>&1 || apt-get install -y -qq libatomic1 >/dev/null

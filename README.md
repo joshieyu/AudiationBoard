@@ -28,6 +28,8 @@ Data lives in `./data` (SQLite + uploaded files). Settings, all optional:
 | `HOST` | all interfaces | Set `127.0.0.1` behind a reverse proxy |
 | `MAX_UPLOAD_MB` | 250 | Per-file upload limit |
 | `MIN_FREE_GB` | 0 (off) | Refuse uploads when the disk has less free space than this |
+| `WARN_FREE_GB` | `MIN_FREE_GB` + 5 | Show the low-storage warning below this much free space |
+| `ADMIN_KEY` | unset (admin off) | Unlocks `/admin`: disk usage, project sizes, deleting projects, cleaning up unused files |
 
 ### Deploying to the Hetzner server
 
@@ -38,7 +40,7 @@ Data lives in `./data` (SQLite + uploaded files). Settings, all optional:
 ./deploy/deploy.sh           # every deploy after that
 ```
 
-On the server: the app is in `/srv/audiation/app`, data in `/srv/audiation/data`, settings in `/etc/audiation/audiation.env`, logs via `journalctl -u audiation -f`. Back up `/srv/audiation/data` to keep boards safe.
+On the server: the app is in `/srv/audiation/app`, data in `/srv/audiation/data`, settings in `/etc/audiation/audiation.env`, logs via `journalctl -u audiation -f`. The admin key is in the env file: `ssh root@2.29.191.107 grep ADMIN_KEY /etc/audiation/audiation.env`. Back up `/srv/audiation/data` to keep boards safe.
 
 ## How it works
 

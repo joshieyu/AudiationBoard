@@ -13,6 +13,7 @@ install -d -m 750 -g audiation /etc/audiation
 [ -f /etc/audiation/audiation.env ] || install -m 640 -g audiation "$KIT/audiation.env" /etc/audiation/audiation.env
 
 # A private Node runtime for this app only, verified against nodejs.org's checksums.
+dpkg -s libatomic1 >/dev/null 2>&1 || apt-get install -y -qq libatomic1 >/dev/null
 if [ "$(/opt/audiation-node/bin/node -v 2>/dev/null || true)" != "$NODE_VERSION" ]; then
   case "$(uname -m)" in x86_64) arch=x64 ;; aarch64) arch=arm64 ;; *) echo "unsupported arch"; exit 1 ;; esac
   tarball="node-$NODE_VERSION-linux-$arch.tar.xz"
